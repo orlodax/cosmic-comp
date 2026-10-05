@@ -1,0 +1,10 @@
+#!/bin/sh
+# Installed as ~/.local/bin/cosmic-comp. Starts the patched build only if it was built for the
+# installed cosmic-comp package, so a COSMIC update never runs a mismatched compositor.
+installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' cosmic-comp 2>/dev/null)
+patched="$HOME/.local/lib/cosmic-comp-patched/$installed/cosmic-comp"
+if [ -x "$patched" ]; then
+    exec "$patched" "$@"
+fi
+logger -t cosmic-comp-patched "no patched build for cosmic-comp $installed, starting /usr/bin/cosmic-comp"
+exec /usr/bin/cosmic-comp "$@"

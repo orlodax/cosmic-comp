@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily check that the patched cosmic-comp matches the installed version
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+Unit=cosmic-comp-patched-rebuild.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Rebuild the patched cosmic-comp when dnf replaces the system one
+
+[Path]
+PathChanged=/usr/bin/cosmic-comp
+Unit=cosmic-comp-patched-rebuild.service
+
+[Install]
+WantedBy=default.target

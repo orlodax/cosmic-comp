@@ -1,0 +1,10 @@
+[Unit]
+Description=Build the patched cosmic-comp for the installed COSMIC version
+
+[Service]
+Type=oneshot
+# Let a running dnf transaction finish before building against it.
+ExecStartPre=/usr/bin/sleep 120
+ExecStart=%h/.local/share/cosmic-comp-patched/rebuild.sh
+Nice=15
+IOSchedulingClass=idle

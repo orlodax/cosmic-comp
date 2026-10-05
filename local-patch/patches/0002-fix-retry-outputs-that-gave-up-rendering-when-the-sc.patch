@@ -1,0 +1,127 @@
+From a5a67fb9abad233e323e38e945936410ac14f0d7 Mon Sep 17 00:00:00 2001
+From: Dario Orlovich <orlodax@gmail.com>
+Date: Fri, 2 Oct 2026 15:33:29 +0100
+Subject: [PATCH 2/2] fix: retry outputs that gave up rendering when the
+ screens wake
+
+A surface that gave up after repeated rejected commits only came back
+through an output configuration apply. The unbounded retry loop it
+replaced did recover on a later wake: on an NVIDIA rig where HDMI
+intermittently fails to come back from DPMS, 2 of 6 stuck episodes on
+the stock build healed by themselves at a later wake.
+
+When an output really goes from off to on, through input or
+wlr-output-power, and the woken surface is inactive, re-apply the output
+config on idle, once every output in the batch is on. This is the same
+refresh_output_config() a DRM udev change or session resume runs.
+Repeated `On` requests for outputs that are already on (cosmic-idle sends
+them on every resume) do not trigger it, and outputs a client turned off
+again are left alone. The power state is refreshed afterwards, since
+re-initializing powers outputs on.
+
+Refs: https://github.com/pop-os/cosmic-comp/issues/2688
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/backend/kms/surface/mod.rs       |  6 +++---
+ src/wayland/handlers/output_power.rs | 30 ++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/src/backend/kms/surface/mod.rs b/src/backend/kms/surface/mod.rs
+index e15c0584..588fce0f 100644
+--- a/src/backend/kms/surface/mod.rs
++++ b/src/backend/kms/surface/mod.rs
+@@ -181,8 +181,8 @@ pub type GbmDrmOutput = DrmOutput<
+     DrmDeviceFd,
+ >;
+ 
+-/// Consecutive failed redraws after which a surface stops rendering, until its output is
+-/// configured again.
++/// Consecutive failed redraws after which a surface stops rendering, until the next wake or
++/// output configuration.
+ const MAX_REDRAW_FAILURES: u32 = 12;
+ const MAX_REDRAW_RETRY_DELAY: Duration = Duration::from_secs(4);
+ 
+@@ -1057,7 +1057,7 @@ impl SurfaceThreadState {
+             error!(
+                 ?name,
+                 failures = self.redraw_failures,
+-                "Failed to submit rendering, giving up until the output is configured again: {:?}",
++                "Failed to submit rendering, giving up until the next wake or output configuration: {:?}",
+                 err
+             );
+             self.deactivate();
+diff --git a/src/wayland/handlers/output_power.rs b/src/wayland/handlers/output_power.rs
+index 333aacc6..4eb19458 100644
+--- a/src/wayland/handlers/output_power.rs
++++ b/src/wayland/handlers/output_power.rs
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-3.0-only
+ 
+ use smithay::output::Output;
++use tracing::warn;
+ 
+ use crate::{
+     backend::kms::Surface,
+@@ -13,12 +14,17 @@ use crate::{
+ 
+ pub fn set_all_surfaces_dpms_on(state: &mut State) {
+     let mut changed = false;
++    let mut reinit = false;
+     for surface in kms_surfaces(state) {
+         if !surface.get_dpms() {
+             surface.set_dpms(true);
+             changed = true;
++            reinit |= !surface.is_active();
+         }
+     }
++    if reinit {
++        reinit_inactive_surfaces(state);
++    }
+ 
+     if changed {
+         // Powering an output on because of input is activity. Without this the idle
+@@ -30,6 +36,24 @@ pub fn set_all_surfaces_dpms_on(state: &mut State) {
+     }
+ }
+ 
++/// A surface that gave up rendering only comes back through an output config apply, so a wake
++/// retries it, like the redraw loop it replaced did.
++fn reinit_inactive_surfaces(state: &mut State) {
++    // Deferred, so every output woken in the same batch is on before the config is applied.
++    state.common.event_loop_handle.insert_idle(|state| {
++        // Only outputs meant to be on: a client may have turned this one off again meanwhile.
++        if kms_surfaces(state).any(|surface| {
++            !surface.is_active() && surface.output.is_enabled() && surface.get_dpms()
++        }) {
++            if let Err(err) = state.refresh_output_config() {
++                warn!("Unable to re-initialize outputs after wake: {}", err);
++            }
++            // Re-initializing powers outputs on, which clients must see.
++            OutputPowerState::refresh(state);
++        }
++    });
++}
++
+ fn kms_surfaces(state: &mut State) -> impl Iterator<Item = &mut Surface> {
+     if let BackendData::Kms(kms_state) = &mut state.backend {
+         Some(
+@@ -74,9 +98,15 @@ impl OutputPowerHandler for State {
+     }
+ 
+     fn set_dpms(&mut self, output: &Output, on: bool) {
++        let mut reinit = false;
+         for surface in kms_surfaces_for_output(self, output) {
++            // cosmic-idle repeats `On` for outputs that are already on; only a real wake retries.
++            reinit |= on && !surface.get_dpms() && !surface.is_active();
+             surface.set_dpms(on);
+         }
++        if reinit {
++            reinit_inactive_surfaces(self);
++        }
+     }
+ }
+ 
+-- 
+2.55.0
+
