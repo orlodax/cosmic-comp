@@ -1,0 +1,62 @@
+From 15d9ba5e5b397f736ca91eff541e84e4a866f137 Mon Sep 17 00:00:00 2001
+From: Dario Orlovich <orlodax@gmail.com>
+Date: Sat, 10 Oct 2026 14:53:13 +0100
+Subject: [PATCH 3/3] fix: fail captures of an output that gave up rendering
+
+An output that gave up rendering has no DrmOutput, so queue_redraw and
+redraw return early and never take its pending image-copy frames. A
+client capturing that output waits forever: the screenshot portal
+captures every output in turn, so a non-interactive Screenshot call got
+no Response and Flameshot hung, for as long as any output stayed given
+up.
+
+Fail those frames instead, at give-up and on every later capture
+request until the output is re-initialized, the same way a frame KMS
+rejects is failed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/backend/kms/surface/mod.rs | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/backend/kms/surface/mod.rs b/src/backend/kms/surface/mod.rs
+index 588fce0f..e36e42fe 100644
+--- a/src/backend/kms/surface/mod.rs
++++ b/src/backend/kms/surface/mod.rs
+@@ -956,6 +956,9 @@ impl SurfaceThreadState {
+ 
+     fn queue_redraw(&mut self, force: bool) {
+         let Some(_compositor) = self.compositor.as_mut() else {
++            if self.redraw_failures >= MAX_REDRAW_FAILURES {
++                self.fail_pending_captures();
++            }
+             return;
+         };
+ 
+@@ -1061,6 +1064,7 @@ impl SurfaceThreadState {
+                 err
+             );
+             self.deactivate();
++            self.fail_pending_captures();
+             return;
+         }
+         if self.redraw_failures == 1 {
+@@ -1092,6 +1096,15 @@ impl SurfaceThreadState {
+         };
+     }
+ 
++    /// A surface that gave up renders nothing until it is re-initialized, so its capture frames
++    /// fail now, like a rejected frame's do, instead of leaving the client waiting (e.g. the
++    /// screenshot portal, which captures every output in turn).
++    fn fail_pending_captures(&self) {
++        for (_session, frame) in self.output.take_pending_frames() {
++            frame.fail(CaptureFailureReason::Unknown);
++        }
++    }
++
+     #[profiling::function]
+     fn redraw(&mut self, estimated_presentation: Duration) -> Result<()> {
+         let Some(compositor) = self.compositor.as_mut() else {
+-- 
+2.56.0
+

@@ -39,9 +39,11 @@ cleanup
 mkdir -p "$work"
 git -C "$repo" worktree add -q --detach "$worktree" "$tag"
 
-if ! git -C "$worktree" am -q -3 "$share"/patches/*.patch; then
+# No `-3`: a 3-way merge resolves overlaps silently, so a patch whose context moved is ported by
+# hand instead of shipping an unreviewed merge.
+if ! git -C "$worktree" am -q "$share"/patches/*.patch; then
     git -C "$worktree" am --abort 2>/dev/null || true
-    notify "Patch no longer applies to $tag" "Running stock cosmic-comp $installed until the patch is ported."
+    notify "Patch no longer applies cleanly to $tag" "Running stock cosmic-comp $installed until the patch is ported."
     exit 1
 fi
 

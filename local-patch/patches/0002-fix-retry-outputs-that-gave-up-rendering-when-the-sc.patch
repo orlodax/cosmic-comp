@@ -1,7 +1,7 @@
-From a5a67fb9abad233e323e38e945936410ac14f0d7 Mon Sep 17 00:00:00 2001
+From 5b9a889942f134d596d916033092089a5fc0bf85 Mon Sep 17 00:00:00 2001
 From: Dario Orlovich <orlodax@gmail.com>
 Date: Fri, 2 Oct 2026 15:33:29 +0100
-Subject: [PATCH 2/2] fix: retry outputs that gave up rendering when the
+Subject: [PATCH 2/3] fix: retry outputs that gave up rendering when the
  screens wake
 
 A surface that gave up after repeated rejected commits only came back
@@ -123,5 +123,5 @@ index 333aacc6..4eb19458 100644
  }
  
 -- 
-2.55.0
+2.56.0
 

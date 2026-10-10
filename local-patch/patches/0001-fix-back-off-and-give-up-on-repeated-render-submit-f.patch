@@ -1,7 +1,7 @@
-From f8a9a269d091436eaa404d55b69ede3d229fb58c Mon Sep 17 00:00:00 2001
+From b88f23984192029ff65b44ad39d357e6a7984f68 Mon Sep 17 00:00:00 2001
 From: Dario Orlovich <orlodax@gmail.com>
 Date: Thu, 1 Oct 2026 12:23:44 +0100
-Subject: [PATCH 1/2] fix: back off and give up on repeated render submit
+Subject: [PATCH 1/3] fix: back off and give up on repeated render submit
  failures
 
 A surface whose commits are rejected by the kernel used to re-queue a
@@ -281,5 +281,5 @@ index cbc89381..e15c0584 100644
 +    }
 +}
 -- 
-2.55.0
+2.56.0
 

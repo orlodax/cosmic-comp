@@ -7,6 +7,8 @@ bring back after the screens sleep (NVIDIA GTX 1060, three monitors):
   thousands of times per second; after 12 consecutive KMS rejections, give the output up so display
   changes work again (the first `cosmic-randr disable` is accepted).
 - `0002`: on the next screen wake, re-apply the output config once, so a given-up output can come back.
+- `0003`: while an output is given up, fail its screen captures at once instead of leaving them
+  queued forever (the screenshot portal waited on them, so Flameshot hung).
 
 It stays local. pop-os does not accept LLM-generated contributions in issues or PRs (see the PR
 template and https://github.com/pop-os/pop/blob/master/CONTRIBUTING.md); upstream PR #2917 was closed
@@ -55,7 +57,8 @@ Ctrl+Alt+F1, log in.
 
 ## When the patch stops applying
 
-The notification says "Patch no longer applies to epoch-X". Port it in a worktree on that tag, then
+The notification says "Patch no longer applies cleanly to epoch-X". `rebuild.sh` applies the patches
+without `-3`, so any hunk whose context moved stops the build; port it by hand and read the result. Port it in a worktree on that tag, then
 regenerate the patch files on this branch (`fix/redraw-failure-backoff`, where `local-patch/` lives)
 and reinstall:
 
@@ -71,7 +74,8 @@ local-patch/install.sh
 ```
 
 Verified 2026-10-05: both patches apply cleanly to `epoch-1.8.0` (Fedora `cosmic-comp-1.8.0-1.fc44`)
-and to upstream master `3d55cba0`; unit tests pass on both.
+and to upstream master `3d55cba0`; unit tests pass on both. Verified 2026-10-10: all three apply
+without `-3` to `epoch-1.10.0`.
 
 ## What to expect when a screen fails at wake
 
@@ -80,3 +84,8 @@ nothing more. To bring the screen back: blank the screens briefly
 (`wlopm --off '*'; sleep 5; wlopm --on '*'`), or `cosmic-randr disable <output>` followed by
 `~/.local/bin/fix-hdmi`. While the dead output is still enabled, display-settings changes that keep it
 enabled are rejected; disabling it works.
+
+Screenshots fail while an output is given up (Flameshot reports an error, the portal answers
+`Response 2`; read from the code, not yet seen live), as stock does when KMS rejects the frame;
+they work again once the output is back.
+Before `0003` they hung instead.
