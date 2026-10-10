@@ -956,6 +956,9 @@ impl SurfaceThreadState {
 
     fn queue_redraw(&mut self, force: bool) {
         let Some(_compositor) = self.compositor.as_mut() else {
+            if self.redraw_failures >= MAX_REDRAW_FAILURES {
+                self.fail_pending_captures();
+            }
             return;
         };
 
@@ -1061,6 +1064,7 @@ impl SurfaceThreadState {
                 err
             );
             self.deactivate();
+            self.fail_pending_captures();
             return;
         }
         if self.redraw_failures == 1 {
@@ -1090,6 +1094,15 @@ impl SurfaceThreadState {
             },
             QueueState::WaitingForVBlank { .. } => unreachable!(),
         };
+    }
+
+    /// A surface that gave up renders nothing until it is re-initialized, so its capture frames
+    /// fail now, like a rejected frame's do, instead of leaving the client waiting (e.g. the
+    /// screenshot portal, which captures every output in turn).
+    fn fail_pending_captures(&self) {
+        for (_session, frame) in self.output.take_pending_frames() {
+            frame.fail(CaptureFailureReason::Unknown);
+        }
     }
 
     #[profiling::function]
